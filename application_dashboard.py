@@ -220,7 +220,8 @@ def main():
         st.write("Configure your AI API keys for enhanced cover letter generation.")
         
         # API Key inputs
-        st.subheader("API Configuration")
+        st.subheader("🔧 OpenAI GPT-4o Mini Configuration")
+        st.info("GPT-4o Mini is OpenAI's most cost-effective model, perfect for cover letters at ~$0.001 per letter!")
         
         openai_key = st.text_input(
             "OpenAI API Key", 
@@ -230,37 +231,73 @@ def main():
         )
         if openai_key:
             st.session_state.openai_api_key = openai_key
+            st.success("✅ OpenAI API Key saved!")
         
-        anthropic_key = st.text_input(
-            "Anthropic API Key", 
-            value=st.session_state.get('anthropic_api_key', ''),
-            type="password",
-            help="Get your API key from https://console.anthropic.com/"
-        )
-        if anthropic_key:
-            st.session_state.anthropic_api_key = anthropic_key
+        # Test API connection
+        if st.button("🧪 Test API Connection"):
+            if openai_key:
+                try:
+                    from openai import OpenAI
+                    client = OpenAI(api_key=openai_key)
+                    
+                    # Simple test call
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": "Say 'API connection successful!'"}],
+                        max_tokens=10
+                    )
+                    st.success("✅ API connection successful! Ready to generate cover letters.")
+                except Exception as e:
+                    st.error(f"❌ API connection failed: {str(e)}")
+            else:
+                st.error("Please enter your API key first.")
         
-        huggingface_key = st.text_input(
-            "Hugging Face API Key", 
-            value=st.session_state.get('huggingface_api_key', ''),
-            type="password",
-            help="Get your free API key from https://huggingface.co/settings/tokens"
-        )
-        if huggingface_key:
-            st.session_state.huggingface_api_key = huggingface_key
+        # Cost calculator
+        st.subheader("💰 Cost Calculator")
+        num_letters = st.slider("Number of cover letters to generate:", 1, 100, 10)
+        estimated_cost = num_letters * 0.001  # Approximate cost per letter
+        st.metric("Estimated Cost", f"${estimated_cost:.3f}")
+        st.caption("GPT-4o Mini is extremely cost-effective - about 80% cheaper than GPT-4!")
         
-        # Model comparison
-        st.subheader("📊 AI Model Comparison")
+        # Model comparison focused on GPT-4o Mini
+        st.subheader("🏆 Why GPT-4o Mini for Cover Letters?")
         
-        comparison_data = {
-            "Model": ["OpenAI GPT-3.5", "OpenAI GPT-4", "Anthropic Claude", "Hugging Face", "Local LLM", "Template"],
-            "Cost": ["Low", "High", "Medium", "Free", "Free", "Free"],
-            "Quality": ["High", "Very High", "Very High", "Medium", "Varies", "Low"],
-            "Speed": ["Fast", "Medium", "Fast", "Medium", "Fast", "Instant"],
-            "Setup": ["Easy", "Easy", "Easy", "Easy", "Complex", "None"]
+        benefits = {
+            "Feature": [
+                "Cost per Cover Letter",
+                "Quality", 
+                "Speed",
+                "Context Understanding",
+                "Professional Writing",
+                "Customization"
+            ],
+            "GPT-4o Mini": [
+                "~$0.001",
+                "Excellent",
+                "Very Fast",
+                "Superior",
+                "Professional",
+                "Highly Tailored"
+            ],
+            "GPT-3.5 Turbo": [
+                "~$0.002",
+                "Good",
+                "Fast",
+                "Good",
+                "Good",
+                "Moderate"
+            ],
+            "Free Alternatives": [
+                "$0",
+                "Basic",
+                "Slow",
+                "Limited",
+                "Generic",
+                "Minimal"
+            ]
         }
         
-        st.table(pd.DataFrame(comparison_data))
+        st.table(pd.DataFrame(benefits))
         
         # Instructions
         st.subheader("🚀 Setup Instructions")
