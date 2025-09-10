@@ -240,40 +240,51 @@ def update_application(app_id, **kwargs):
             break
     save_applications_data()
 
+
 def generate_cover_letter(application):
-    """Generate tailored cover letter"""
-    if not st.session_state.resume.strip():
-        return "Please add your resume information first in the Resume section."
+    """Generate tailored cover letter using OpenAI GPT-4o Mini"""
+    openai_key = st.session_state.get('openai_api_key', '').strip()
     
-    cover_letter = f"""Dear Hiring Manager,
+    if not openai_key:
+        return "❌ Please enter your OpenAI API key in the AI Settings page first."
+    
+    if not st.session_state.resume.strip():
+        return "❌ Please add your resume information first in the Resume section."
+    
+    # Combine resume and job description into a single prompt
+    prompt = f"""
+You are a professional resume and cover letter writer.
+Write a **one-page, professional cover letter** that is tailored to the following job description and resume information.
+Make it concise, engaging, and highlight the applicant's strengths. Also, do not use the word "fosetering" and no hyphens.
 
-I am writing to express my strong interest in the {application['job_title']} position at {application['company_name']} in {application['location']}. Based on the job description, I believe my skills and experience make me an excellent candidate for this role.
+--- Job Description ---
+{application['job_description']}
 
-Your job posting mentions requirements that align perfectly with my background. I am particularly excited about the opportunity to contribute to {application['company_name']}'s mission and growth in this dynamic role.
+--- Resume Information ---
+{st.session_state.resume}
 
-Key qualifications I bring include:
-• Strong technical and analytical skills developed through my academic and professional experience
-• Proven ability to work collaboratively in team environments
-• Excellent communication and problem-solving capabilities
-• Enthusiasm for learning and adapting to new challenges
+Include the applicant's name as [Your Name] and the company as {application['company_name']}.
+Keep the tone professional and enthusiastic.
+    """
+    
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=openai_key)
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=600,
+            temperature=0.7
+        )
+        
+        # Correct way to get the content
+        cover_letter = response.choices[0].message.content.strip()
+        return cover_letter
+    
+    except Exception as e:
+        return f"❌ API call failed: {str(e)}"
 
-As detailed in my attached resume, my background includes relevant experience and skills that would benefit your team.
-
-I am excited about the possibility of contributing to {application['company_name']} and would welcome the opportunity to discuss how my skills and enthusiasm can benefit your team. Thank you for considering my application.
-
-Sincerely,
-[Your Name]
-
----
-Application Details:
-Company: {application['company_name']}
-Position: {application['job_title']}
-Location: {application['location']}
-Wage: {application['wage']}
-Source: {application['source']}
-Date Added: {application['date_added']}"""
-
-    return cover_letter
 
 def create_sankey_chart():
     """Create Sankey-style visualization using plotly"""
