@@ -5,6 +5,8 @@ import plotly.graph_objects as go
 from datetime import datetime
 import json
 import os
+import pickle
+import hashlib
 
 # Page configuration
 st.set_page_config(
@@ -13,12 +15,169 @@ st.set_page_config(
     layout="wide"
 )
 
-# Initialize session state
-if 'applications' not in st.session_state:
-    st.session_state.applications = []
+# Data persistence configuration
+DATA_DIR = "job_tracker_data"
+APPLICATIONS_FILE = os.path.join(DATA_DIR, "applications.json")
+RESUME_FILE = os.path.join(DATA_DIR, "resume.txt")
+BACKUP_FILE = os.path.join(DATA_DIR, "applications_backup.json")
 
-if 'resume' not in st.session_state:
-    st.session_state.resume = ""
+def ensure_data_directory():
+    """Ensure data directory exists"""
+    if not os.path.exists(DATA_DIR):
+        try:
+            os.makedirs(DATA_DIR)
+        except:
+            pass
+
+def get_user_session_id():
+    """Generate a unique session ID based on browser session"""
+    # Use Streamlit's session state to maintain consistency
+    if 'user_session_id' not in st.session_state:
+        # Create a simple session ID (in production, you might want user authentication)
+        import time
+        st.session_state.user_session_id = hashlib.md5(str(time.time()).encode()).hexdigest()[:8]
+    return st.session_state.user_session_id
+
+def get_user_data_files():
+    """Get user-specific data file paths"""
+    session_id = get_user_session_id()
+    return {
+        'applications': os.path.join(DATA_DIR, f"applications_{session_id}.json"),
+        'resume': os.path.join(DATA_DIR, f"resume_{session_id}.txt"),
+        'backup': os.path.join(DATA_DIR, f"backup_{session_id}.json")
+    }
+
+def save_applications_data():
+    """Save applications to JSON file with backup"""
+    ensure_data_directory()
+    files = get_user_data_files()
+    
+    try:
+        # Create backup of existing data
+        if os.path.exists(files['applications']):
+            try:
+                with open(files['applications'], 'r') as f:
+                    backup_data = json.load(f)
+                with open(files['backup'], 'w') as f:
+                    json.dump(backup_data, f, indent=2)
+            except:
+                pass
+        
+        # Save current data
+        with open(files['applications'], 'w') as f:
+            json.dump(st.session_state.applications, f, indent=2, default=str)
+        
+        return True
+    except Exception as e:
+        st.error(f"Error saving data: {str(e)}")
+        return False
+
+def load_applications_data():
+    """Load applications from JSON file"""
+    ensure_data_directory()
+    files = get_user_data_files()
+    
+    try:
+        if os.path.exists(files['applications']):
+            with open(files['applications'], 'r') as f:
+                data = json.load(f)
+                st.session_state.applications = data
+                return True
+        else:
+            st.session_state.applications = []
+            return False
+    except Exception as e:
+        st.error(f"Error loading applications data: {str(e)}")
+        # Try to load from backup
+        try:
+            if os.path.exists(files['backup']):
+                with open(files['backup'], 'r') as f:
+                    data = json.load(f)
+                    st.session_state.applications = data
+                    st.warning("Loaded data from backup file.")
+                    return True
+        except:
+            pass
+        
+        st.session_state.applications = []
+        return False
+
+def save_resume_data():
+    """Save resume to text file"""
+    ensure_data_directory()
+    files = get_user_data_files()
+    
+    try:
+        with open(files['resume'], 'w', encoding='utf-8') as f:
+            f.write(st.session_state.get('resume', ''))
+        return True
+    except Exception as e:
+        st.error(f"Error saving resume: {str(e)}")
+        return False
+
+def load_resume_data():
+    """Load resume from text file"""
+    ensure_data_directory()
+    files = get_user_data_files()
+    
+    try:
+        if os.path.exists(files['resume']):
+            with open(files['resume'], 'r', encoding='utf-8') as f:
+                st.session_state.resume = f.read()
+                return True
+        else:
+            st.session_state.resume = ""
+            return False
+    except Exception as e:
+        st.error(f"Error loading resume: {str(e)}")
+        st.session_state.resume = ""
+        return False
+
+def initialize_session_state():
+    """Initialize all session state variables"""
+    if 'applications' not in st.session_state:
+        st.session_state.applications = []
+    
+    if 'resume' not in st.session_state:
+        st.session_state.resume = ""
+    
+    if 'data_loaded' not in st.session_state:
+        st.session_state.data_loaded = False
+
+def load_all_data():
+    """Load all user data"""
+    if not st.session_state.data_loaded:
+        load_applications_data()
+        load_resume_data()
+        st.session_state.data_loaded = True
+
+def export_all_data():
+    """Export all data as JSON for backup/transfer"""
+    export_data = {
+        'applications': st.session_state.applications,
+        'resume': st.session_state.resume,
+        'export_date': datetime.now().isoformat(),
+        'session_id': get_user_session_id()
+    }
+    return json.dumps(export_data, indent=2, default=str)
+
+def import_data(imported_json):
+    """Import data from JSON"""
+    try:
+        data = json.loads(imported_json)
+        
+        if 'applications' in data:
+            st.session_state.applications = data['applications']
+            save_applications_data()
+        
+        if 'resume' in data:
+            st.session_state.resume = data['resume']
+            save_resume_data()
+        
+        return True
+    except Exception as e:
+        st.error(f"Error importing data: {str(e)}")
+        return False
 
 # Status options and colors
 STATUS_OPTIONS = [
@@ -38,21 +197,14 @@ STATUS_COLORS = {
 
 SOURCE_OPTIONS = ["LinkedIn", "Handshake", "Company Website", "Indeed", "Referral", "Other"]
 
-def save_data():
-    """Save applications to JSON file"""
-    with open('job_applications.json', 'w') as f:
-        json.dump(st.session_state.applications, f)
-
-def load_data():
-    """Load applications from JSON file"""
-    if os.path.exists('job_applications.json'):
-        with open('job_applications.json', 'r') as f:
-            st.session_state.applications = json.load(f)
-
 def add_application(job_title, company_name, location, wage, status, source, job_description):
     """Add new application to the list"""
+    # Generate unique ID based on existing applications
+    existing_ids = [app.get('id', 0) for app in st.session_state.applications]
+    new_id = max(existing_ids, default=0) + 1
+    
     application = {
-        'id': len(st.session_state.applications) + 1,
+        'id': new_id,
         'job_title': job_title,
         'company_name': company_name,
         'location': location,
@@ -63,12 +215,12 @@ def add_application(job_title, company_name, location, wage, status, source, job
         'date_added': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
     st.session_state.applications.append(application)
-    save_data()
+    save_applications_data()
 
 def delete_application(app_id):
     """Delete application by ID"""
     st.session_state.applications = [app for app in st.session_state.applications if app['id'] != app_id]
-    save_data()
+    save_applications_data()
 
 def update_application_status(app_id, new_status):
     """Update application status"""
@@ -76,7 +228,17 @@ def update_application_status(app_id, new_status):
         if app['id'] == app_id:
             app['status'] = new_status
             break
-    save_data()
+    save_applications_data()
+
+def update_application(app_id, **kwargs):
+    """Update application with any field"""
+    for app in st.session_state.applications:
+        if app['id'] == app_id:
+            for key, value in kwargs.items():
+                if key in app:
+                    app[key] = value
+            break
+    save_applications_data()
 
 def generate_cover_letter(application):
     """Generate tailored cover letter"""
@@ -205,17 +367,110 @@ def analytics_dashboard():
     if sankey_fig:
         st.plotly_chart(sankey_fig, use_container_width=True)
 
+def data_management_page():
+    """Data management and backup page"""
+    st.header("💾 Data Management")
+    
+    # Session info
+    st.subheader("📊 Session Information")
+    session_id = get_user_session_id()
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Session ID", session_id)
+    with col2:
+        st.metric("Applications", len(st.session_state.applications))
+    with col3:
+        resume_chars = len(st.session_state.resume)
+        st.metric("Resume Characters", resume_chars)
+    
+    st.divider()
+    
+    # Data backup and export
+    st.subheader("📤 Export Data")
+    st.write("Download your data as a backup or to transfer to another device.")
+    
+    if st.button("📋 Generate Export Data"):
+        export_json = export_all_data()
+        st.session_state.export_data = export_json
+    
+    if 'export_data' in st.session_state:
+        st.download_button(
+            label="⬇️ Download Data Backup",
+            data=st.session_state.export_data,
+            file_name=f"job_tracker_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            mime="application/json"
+        )
+    
+    st.divider()
+    
+    # Data import
+    st.subheader("📤 Import Data")
+    st.write("Upload a previously exported backup file to restore your data.")
+    
+    uploaded_file = st.file_uploader("Choose backup file", type=['json'])
+    if uploaded_file is not None:
+        try:
+            file_content = uploaded_file.read().decode('utf-8')
+            if st.button("🔄 Import Data"):
+                if import_data(file_content):
+                    st.success("Data imported successfully!")
+                    st.rerun()
+        except Exception as e:
+            st.error(f"Error reading file: {str(e)}")
+    
+    st.divider()
+    
+    # Manual data input
+    st.subheader("✏️ Manual Data Entry")
+    with st.expander("Import from JSON text"):
+        json_text = st.text_area("Paste JSON data here:", height=200)
+        if st.button("Import from Text"):
+            if json_text.strip():
+                if import_data(json_text):
+                    st.success("Data imported from text successfully!")
+                    st.rerun()
+    
+    st.divider()
+    
+    # Clear data
+    st.subheader("🗑️ Clear Data")
+    st.warning("This will permanently delete all your applications and resume data!")
+    
+    if st.button("🗑️ Clear All Data", type="secondary"):
+        if st.session_state.get('confirm_clear', False):
+            st.session_state.applications = []
+            st.session_state.resume = ""
+            save_applications_data()
+            save_resume_data()
+            st.success("All data cleared!")
+            st.session_state.confirm_clear = False
+            st.rerun()
+        else:
+            st.session_state.confirm_clear = True
+            st.error("Click again to confirm deletion!")
+
 def main():
-    # Load data on startup
-    load_data()
+    # Initialize session state and load data
+    initialize_session_state()
+    load_all_data()
     
     st.title("📊 Summer 2025 Job Application Tracker")
     
     # Sidebar navigation
     st.sidebar.title("Navigation")
-    page = st.sidebar.selectbox("Choose a page:", ["Application Tracker", "Analytics", "Resume", "AI Settings"])
+    page = st.sidebar.selectbox("Choose a page:", [
+        "Application Tracker", 
+        "Analytics", 
+        "Resume", 
+        "Data Management",
+        "AI Settings"
+    ])
     
-    if page == "AI Settings":
+    if page == "Data Management":
+        data_management_page()
+        
+    elif page == "AI Settings":
         st.header("🤖 AI Settings")
         st.write("Configure your AI API keys for enhanced cover letter generation.")
         
@@ -337,7 +592,7 @@ def main():
             4. Select "local" in the AI model dropdown
             5. Cost: Free, runs on your computer
             """)
-        
+    
     elif page == "Application Tracker":
         st.header("🎯 Application Tracker")
         
@@ -376,10 +631,11 @@ def main():
         if st.session_state.applications:
             st.subheader("📋 Your Applications")
             
-            # Convert to DataFrame for display
-            df = pd.DataFrame(st.session_state.applications)
+            # Sort applications by date (newest first)
+            sorted_apps = sorted(st.session_state.applications, 
+                                key=lambda x: x.get('date_added', ''), reverse=True)
             
-            for i, app in enumerate(st.session_state.applications):
+            for i, app in enumerate(sorted_apps):
                 with st.container():
                     col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
                     
@@ -461,12 +717,16 @@ def main():
         
         if st.button("💾 Save Resume"):
             st.session_state.resume = resume_content
-            st.success("Resume saved successfully!")
+            if save_resume_data():
+                st.success("Resume saved successfully!")
+            else:
+                st.error("Error saving resume. Please try again.")
         
         # Display current resume info
         if st.session_state.resume:
             st.subheader("Current Resume Preview")
-            st.text_area("Preview", st.session_state.resume[:500] + "..." if len(st.session_state.resume) > 500 else st.session_state.resume, height=200, disabled=True)
+            preview_text = st.session_state.resume[:500] + "..." if len(st.session_state.resume) > 500 else st.session_state.resume
+            st.text_area("Preview", preview_text, height=200, disabled=True)
 
     # Sidebar statistics
     st.sidebar.markdown("---")
@@ -492,6 +752,14 @@ def main():
             file_name=f"job_applications_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv"
         )
+    
+    # Data persistence status
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("💾 Data Status")
+    session_id = get_user_session_id()
+    st.sidebar.write(f"Session ID: `{session_id}`")
+    st.sidebar.write(f"Apps: {len(st.session_state.applications)}")
+    st.sidebar.write(f"Resume: {'✅' if st.session_state.resume else '❌'}")
 
 if __name__ == "__main__":
     main()
