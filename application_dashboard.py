@@ -7,7 +7,6 @@ import json
 import os
 import pickle
 import hashlib
-import openai
 
 # Page configuration
 st.set_page_config(
